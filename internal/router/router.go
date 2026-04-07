@@ -26,15 +26,21 @@ func NewRouter(Hub *realtime.Hub) *Router {
 
 func (r *Router) registerRoutes() {
 	r.Mux.HandleFunc("/health", transport.HealthCheck)
+	r.Mux.Use(middleware.Auth)
 
-	protected := r.Mux.PathPrefix("/").Subrouter()
-	protected.Use(middleware.Auth)
-	protected.HandleFunc("/create-channel", r.WsHandler.CreateChannel).Methods("POST")
-	protected.HandleFunc("/delete-channel/{id}", r.WsHandler.DeleteChannel).Methods("DELETE")
-	protected.HandleFunc("/join-channel", r.WsHandler.JoinChannel).Methods("POST")
-	protected.HandleFunc("/kick-client", r.WsHandler.KickClient).Methods("PUT")
-	protected.HandleFunc("/mute-client", r.WsHandler.MuteClient).Methods("PUT")
-	protected.HandleFunc("/ws", r.WsHandler.HandleWs)
+	adminRoute := r.Mux.PathPrefix("/").Subrouter()
+	adminRoute.Use(middleware.RequireRole(realtime.Admin))
+	adminRoute.HandleFunc("/create-channel", r.WsHandler.CreateChannel).Methods("POST")
+	adminRoute.HandleFunc("/delete-channel/{id}", r.WsHandler.DeleteChannel).Methods("DELETE")
+
+	modarator := r.Mux.PathPrefix("/").Subrouter()
+	modarator.Use(middleware.RequireRole(
+		realtime.Admin, realtime.Modarator,
+	))
+	modarator.HandleFunc("/kick-client", r.WsHandler.KickClient).Methods("PUT")
+	modarator.HandleFunc("/mute-client", r.WsHandler.MuteClient).Methods("PUT")
+
+	r.Mux.HandleFunc("/join-channel", r.WsHandler.JoinChannel).Methods("POST")
 }
 
 func (r *Router) Run(addr string) {

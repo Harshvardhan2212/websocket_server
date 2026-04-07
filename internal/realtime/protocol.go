@@ -19,13 +19,22 @@ const (
 )
 
 type Role struct {
-	Name        string                  `json:"name"`
+	Name        RoleName                `json:"name"`
 	Permissions map[Permission]struct{} `json:"permissions"`
 }
 
-var Roles = map[string]*Role{
-	"admin": {
-		Name: "admin",
+type RoleName string
+
+var (
+	Admin     RoleName = "admin"
+	Modarator RoleName = "modarator"
+	Member    RoleName = "member"
+	Guest     RoleName = "guest"
+)
+
+var Roles = map[RoleName]*Role{
+	Admin: {
+		Name: Admin,
 		Permissions: map[Permission]struct{}{
 			CanSend:          {},
 			CanCreateChannel: {},
@@ -36,8 +45,8 @@ var Roles = map[string]*Role{
 		},
 	},
 
-	"modarator": {
-		Name: "modarator",
+	Modarator: {
+		Name: Modarator,
 		Permissions: map[Permission]struct{}{
 			CanSend:       {},
 			CanInviteUser: {},
@@ -45,14 +54,14 @@ var Roles = map[string]*Role{
 			CanMute:       {},
 		},
 	},
-	"member": {
-		Name: "member",
+	Member: {
+		Name: Member,
 		Permissions: map[Permission]struct{}{
 			CanSend: {},
 		},
 	},
-	"guest": {
-		Name:        "guest",
+	Guest: {
+		Name:        Guest,
 		Permissions: map[Permission]struct{}{},
 	},
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"Harshvardhan2212/websocket_server/internal/realtime"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -57,4 +59,33 @@ func Auth(next http.Handler) http.Handler {
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func contains(slice []realtime.RoleName, target string) bool {
+	for _, v := range slice {
+		if string(v) == target {
+			return true
+		}
+	}
+	return false
+}
+
+func RequireRole(roles ...realtime.RoleName) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			roleVal := r.Context().Value(Role)
+			roleStr, ok := roleVal.(string)
+			if !ok {
+				http.Error(w, "Access Denied", http.StatusForbidden)
+				return
+			}
+
+			if !contains(roles, roleStr) {
+				http.Error(w, "Permission Denied", http.StatusForbidden)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
 }

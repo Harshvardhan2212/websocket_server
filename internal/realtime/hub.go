@@ -1,27 +1,20 @@
-// Copyright 2013 The Gorilla WebSocket Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package realtime
 
 import (
 	"github.com/google/uuid"
 )
 
-// Hub maintains the set of active clients and broadcasts messages to the
-// clients.
 type Hub struct {
 	// NOTE: for listing channels and subscrib a users
-	channels map[uuid.UUID]map[*Client]bool
+	channels map[uuid.UUID]map[uuid.UUID]*Client
 
 	// Inbound messages from the clients.
 	broadcast chan *Message
 
-	// Register requests from the clients.
-	register chan *Register
+	registerClient chan *Register
 
 	// Unregister requests from clients.
-	unregister chan *Client
+	unregisterClient chan *Client
 
 	registerChannel chan uuid.UUID
 
@@ -31,9 +24,9 @@ type Hub struct {
 func NewHub() *Hub {
 	return &Hub{
 		broadcast:         make(chan *Message),
-		register:          make(chan *Register),
-		unregister:        make(chan *Client),
-		channels:          make(map[uuid.UUID]map[*Client]bool),
+		registerClient:    make(chan *Register),
+		unregisterClient:  make(chan *Client),
+		channels:          make(map[uuid.UUID]map[uuid.UUID]*Client),
 		registerChannel:   make(chan uuid.UUID),
 		unregisterChannel: make(chan uuid.UUID),
 	}
@@ -44,37 +37,37 @@ func (h *Hub) Run() {
 		select {
 
 		case channel := <-h.registerChannel:
-			h.channels[channel] = make(map[*Client]bool)
+			h.channels[channel] = make(map[uuid.UUID]*Client)
 
 		case channel := <-h.unregisterChannel:
-			for client := range h.channels[channel] {
+			for _, client := range h.channels[channel] {
 				close(client.send)
 			}
 			delete(h.channels, channel)
 
-		case register := <-h.register:
+		case register := <-h.registerClient:
 			channID := register.ChannelID
 			if _, ok := h.channels[channID]; !ok {
-				h.channels[channID] = make(map[*Client]bool)
+				h.channels[channID] = make(map[uuid.UUID]*Client)
 			}
-			h.channels[channID][register.Client] = true
+			h.channels[channID][register.Client.ID] = register.Client
 
-		case client := <-h.unregister:
+		case client := <-h.unregisterClient:
 			for _, clients := range h.channels {
-				if _, ok := clients[client]; ok {
-					delete(clients, client)
+				if _, ok := clients[client.ID]; ok {
+					delete(clients, client.ID)
 					close(client.send)
 				}
 			}
 
 		case message := <-h.broadcast:
 			clients := h.channels[message.ChannelID]
-			for client := range clients {
+			for _, client := range clients {
 				select {
 				case client.send <- message:
 				default:
 					close(client.send)
-					delete(clients, client)
+					delete(clients, client.ID)
 				}
 			}
 		}
@@ -90,4 +83,16 @@ func (h *Hub) CreateChannel() uuid.UUID {
 func (h *Hub) DeleteChannel(channID uuid.UUID) bool {
 	h.unregisterChannel <- channID
 	return true
+}
+
+func (h *Hub) KickClient(channID, clientID uuid.UUID) bool {
+	client, ok := h.channels[channID][clientID]
+	h.unregisterClient <- client
+	return ok
+}
+
+func (h *Hub) MuteClient(channID, clientID uuid.UUID) bool {
+	client, ok := h.channels[channID][clientID]
+	delete(client.Role.Permissions, CanSend)
+	return ok
 }

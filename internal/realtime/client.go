@@ -57,9 +57,8 @@ type Register struct {
 // ensures that there is at most one reader on a connection by executing all
 // reads from this goroutine.
 func (r *Register) readPump() {
-	log.Println("read is running")
 	defer func() {
-		r.Client.hub.unregister <- r.Client
+		r.Client.hub.unregisterClient <- r.Client
 		r.Client.conn.Close()
 	}()
 	r.Client.conn.SetReadLimit(maxMessageSize)
@@ -67,7 +66,6 @@ func (r *Register) readPump() {
 	r.Client.conn.SetPongHandler(func(string) error { r.Client.conn.SetReadDeadline(time.Now().Add(pongWait)); return nil })
 	for {
 		_, message, err := r.Client.conn.ReadMessage()
-		log.Printf("message from connection %v\n", string(message))
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
@@ -87,8 +85,15 @@ func (r *Register) readPump() {
 			continue
 		}
 
-		log.Printf("Message is from read : %+v\n", msg)
-		log.Println("message reach read and send to broadcast channel")
+		// NOTE: stop muted clients from sending message
+		if _, ok := r.Client.Role.Permissions[CanSend]; !ok {
+			r.Client.send <- &Message{
+				ChannelID: r.ChannelID,
+				Payload:   "Don't have Permissions to send Message in this channel",
+			}
+			continue
+		}
+
 		r.Client.hub.broadcast <- &msg
 	}
 }
@@ -99,19 +104,18 @@ func (r *Register) readPump() {
 // application ensures that there is at most one writer to a connection by
 // executing all writes from this goroutine.
 func (r *Register) writePump() {
-	log.Println("write is running")
 	ticker := time.NewTicker(pingPeriod)
 	defer func() {
 		ticker.Stop()
-		r.Client.conn.Close()
+		_ = r.Client.conn.Close()
 	}()
 	for {
 		select {
 		case message, ok := <-r.Client.send:
-			r.Client.conn.SetWriteDeadline(time.Now().Add(writeWait))
+			_ = r.Client.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
 				// The hub closed the channel.
-				r.Client.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				_ = r.Client.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
 
@@ -126,7 +130,6 @@ func (r *Register) writePump() {
 					ChannelID: r.ChannelID,
 					Payload:   "json parsing issue",
 				}
-				log.Println("json parsing issue", err)
 				continue
 			}
 
@@ -142,7 +145,6 @@ func (r *Register) writePump() {
 						ChannelID: r.ChannelID,
 						Payload:   "json parsing issue",
 					}
-					log.Println("json parsing issue", err)
 					continue
 				}
 				w.Write(data)
@@ -160,30 +162,27 @@ func (r *Register) writePump() {
 	}
 }
 
-/*
-* NOTE: this is a entry point which upgrader from http to ws
- */
-func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, channID uuid.UUID) {
+// NOTE: this is a entry point which upgrader from http to ws
+func ServeWs(hub *Hub, w http.ResponseWriter, r *http.Request, channID, clientID uuid.UUID, role RoleName) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Println(err)
 		return
 	}
 	client := &Client{
+		ID:   clientID,
 		hub:  hub,
 		conn: conn,
 		send: make(chan *Message, 256),
+		Role: Roles[role],
 	}
 	reg := &Register{
 		ChannelID: channID,
 		Client:    client,
 	}
 
-	client.hub.register <- reg
-	log.Printf("client connected to channel id: %v\n", channID)
+	client.hub.registerClient <- reg
 
-	// Allow collection of memory referenced by the caller by doing all work in
-	// new goroutines.
 	go reg.writePump()
 	go reg.readPump()
 }

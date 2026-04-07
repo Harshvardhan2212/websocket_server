@@ -10,13 +10,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
-var addr = flag.String("port", ":8080", "http service address")
+var addr = flag.String("port", "8080", "http service address")
 
 func main() {
 	flag.Parse()
-	err := godotenv.Load()
+	err := godotenv.Load("../.env")
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		log.Fatal("Error loading .env file", err)
 	}
 
 	hub := realtime.NewHub()
