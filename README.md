@@ -29,3 +29,7 @@ Client → HTTP → WebSocket Upgrade → Hub → Clients
 Instead of:
 
 * managing shared maps with mutex
+
+## New Permissions
+- admin
+- 

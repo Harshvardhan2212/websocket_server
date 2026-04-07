@@ -5,17 +5,14 @@
 package realtime
 
 import (
-	"log"
-
 	"github.com/google/uuid"
 )
 
 // Hub maintains the set of active clients and broadcasts messages to the
 // clients.
 type Hub struct {
-	// Registered clients.
-	// clients map[*Client]bool  // NOTE: work only for a single braodcast
-	channels map[uuid.UUID]map[*Client]bool // NOTE: for listing channels and subscrib a users
+	// NOTE: for listing channels and subscrib a users
+	channels map[uuid.UUID]map[*Client]bool
 
 	// Inbound messages from the clients.
 	broadcast chan *Message
@@ -25,21 +22,36 @@ type Hub struct {
 
 	// Unregister requests from clients.
 	unregister chan *Client
+
+	registerChannel chan uuid.UUID
+
+	unregisterChannel chan uuid.UUID
 }
 
 func NewHub() *Hub {
 	return &Hub{
-		broadcast:  make(chan *Message),
-		register:   make(chan *Register),
-		unregister: make(chan *Client),
-		// clients:    make(map[*Client]bool),
-		channels: make(map[uuid.UUID]map[*Client]bool),
+		broadcast:         make(chan *Message),
+		register:          make(chan *Register),
+		unregister:        make(chan *Client),
+		channels:          make(map[uuid.UUID]map[*Client]bool),
+		registerChannel:   make(chan uuid.UUID),
+		unregisterChannel: make(chan uuid.UUID),
 	}
 }
 
 func (h *Hub) Run() {
 	for {
 		select {
+
+		case channel := <-h.registerChannel:
+			h.channels[channel] = make(map[*Client]bool)
+
+		case channel := <-h.unregisterChannel:
+			for client := range h.channels[channel] {
+				close(client.send)
+			}
+			delete(h.channels, channel)
+
 		case register := <-h.register:
 			channID := register.ChannelID
 			if _, ok := h.channels[channID]; !ok {
@@ -47,9 +59,6 @@ func (h *Hub) Run() {
 			}
 			h.channels[channID][register.Client] = true
 
-			log.Println("register is called for", h.channels)
-			log.Printf("register is called for %+v", register.Client)
-			// h.clients[client] = true
 		case client := <-h.unregister:
 			for _, clients := range h.channels {
 				if _, ok := clients[client]; ok {
@@ -57,19 +66,28 @@ func (h *Hub) Run() {
 					close(client.send)
 				}
 			}
-			log.Println("unregister is called for", client)
+
 		case message := <-h.broadcast:
 			clients := h.channels[message.ChannelID]
-			log.Printf("message: %+v\n", message)
 			for client := range clients {
 				select {
 				case client.send <- message:
 				default:
 					close(client.send)
 					delete(clients, client)
-					log.Printf("deleted a client %+v\n", client)
 				}
 			}
 		}
 	}
+}
+
+func (h *Hub) CreateChannel() uuid.UUID {
+	channID := uuid.New()
+	h.registerChannel <- channID
+	return channID
+}
+
+func (h *Hub) DeleteChannel(channID uuid.UUID) bool {
+	h.unregisterChannel <- channID
+	return true
 }
