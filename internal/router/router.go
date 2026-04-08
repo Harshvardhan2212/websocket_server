@@ -33,12 +33,12 @@ func (r *Router) registerRoutes() {
 	adminRoute.HandleFunc("/create-channel", r.WsHandler.CreateChannel).Methods("POST")
 	adminRoute.HandleFunc("/delete-channel/{id}", r.WsHandler.DeleteChannel).Methods("DELETE")
 
-	modarator := r.Mux.PathPrefix("/").Subrouter()
-	modarator.Use(middleware.RequireRole(
-		realtime.Admin, realtime.Modarator,
+	moderator := r.Mux.PathPrefix("/").Subrouter()
+	moderator.Use(middleware.RequireRole(
+		realtime.Admin, realtime.Moderator,
 	))
-	modarator.HandleFunc("/kick-client", r.WsHandler.KickClient).Methods("PUT")
-	modarator.HandleFunc("/mute-client", r.WsHandler.MuteClient).Methods("PUT")
+	moderator.HandleFunc("/kick-client", r.WsHandler.KickClient).Methods("PUT")
+	moderator.HandleFunc("/mute-client", r.WsHandler.MuteClient).Methods("PUT")
 
 	r.Mux.HandleFunc("/join-channel", r.WsHandler.JoinChannel).Methods("POST")
 }

@@ -27,7 +27,7 @@ type RoleName string
 
 var (
 	Admin     RoleName = "admin"
-	Modarator RoleName = "modarator"
+	Moderator RoleName = "moderator"
 	Member    RoleName = "member"
 	Guest     RoleName = "guest"
 )
@@ -45,8 +45,8 @@ var Roles = map[RoleName]*Role{
 		},
 	},
 
-	Modarator: {
-		Name: Modarator,
+	Moderator: {
+		Name: Moderator,
 		Permissions: map[Permission]struct{}{
 			CanSend:       {},
 			CanInviteUser: {},
